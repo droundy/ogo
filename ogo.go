@@ -44,14 +44,13 @@ func parseFile(fset *token.FileSet, srcdir, f string) (parsedf *ast.File, err er
 
 func importPath(packages map[string](map[string]*ast.File), fset *token.FileSet, path, dir string) (fmap map[string]*ast.File, err error) {
 	if _, ok := packages[path]; !ok {
-		fmt.Println("Path is:", path)
 		x, err := build.Import(path, dir, 0)
 		if err != nil {
 			return fmap, err
 		}
 		fmap = make(map[string]*ast.File)
 		for _, f := range x.GoFiles {
-			fmt.Println("Looking up", f, "for import", path, "in directory", x.Dir)
+			// fmt.Println("Looking up", f, "for import", path, "in directory", x.Dir)
 			parsedf, err := parseFile(fset, x.Dir, f)
 			if err != nil {
 				fmt.Println("error on file", f, err)
@@ -83,9 +82,6 @@ func buildCommand(dir string) {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(*x)
-	fmt.Println("gofiles:", x.GoFiles)
-	fmt.Println(x.IsCommand())
 	if !x.IsCommand() {
 		fmt.Println("Use ogo on commands only!")
 		os.Exit(1)

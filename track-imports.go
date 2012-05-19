@@ -15,7 +15,6 @@ func TrackImports(pkgs map[string](map[string]*ast.File)) (main *ast.File) {
 	// Let's first set of the package we're going to generate...
 	main = new(ast.File)
 	main.Name = ast.NewIdent("main")
-	maindecls := &main.Decls
 	initstmts := []ast.Stmt{} // this is where we'll stash the init statements...
 
 	todo := make(map[string]struct{})
@@ -26,7 +25,7 @@ func TrackImports(pkgs map[string](map[string]*ast.File)) (main *ast.File) {
 		for pkgfn := range todo {
 			pkg := strings.Split(pkgfn, ".")[0]
 			fn := strings.Split(pkgfn, ".")[1]
-			fmt.Println("Working on package", pkg, "function", fn)
+			// fmt.Println("Working on package", pkg, "function", fn)
 			// We need to look in all this package's files...
 			for _, f := range pkgs[pkg] {
 				// FIXME: it'd be marginally faster to first check if the
@@ -74,7 +73,7 @@ func TrackImports(pkgs map[string](map[string]*ast.File)) (main *ast.File) {
 						for _, spec0 := range tdecl.Specs {
 							spec := spec0.(*ast.TypeSpec)
 							if spec.Name.Name == fn {
-								fmt.Println("Got type declaration of", spec.Name)
+								// fmt.Println("Got type declaration of", spec.Name)
 								spec := *spec
 								spec.Name = ast.NewIdent(fn)
 								sc.MangleExpr(spec.Type)
@@ -83,7 +82,7 @@ func TrackImports(pkgs map[string](map[string]*ast.File)) (main *ast.File) {
 									Tok:   token.TYPE,
 									Specs: []ast.Spec{&spec},
 								}
-								*maindecls = append(*maindecls, d)
+								main.Decls = append(main.Decls, d)
 							}
 						}
 					} else if vdecl, ok := d.(*ast.GenDecl); ok && vdecl.Tok == token.VAR {
@@ -110,7 +109,7 @@ func TrackImports(pkgs map[string](map[string]*ast.File)) (main *ast.File) {
 											},
 										},
 									}
-									*maindecls = append(*maindecls, &d)
+									main.Decls = append(main.Decls, &d)
 								}
 							}
 						}
@@ -131,8 +130,8 @@ func TrackImports(pkgs map[string](map[string]*ast.File)) (main *ast.File) {
 								}
 							}
 							sc.MangleStatement(fdecl.Body)
-							fmt.Println("Dumping out", pkg, fn)
-							*maindecls = append(*maindecls, &fdecl)
+							// fmt.Println("Dumping out", pkg, fn)
+							main.Decls = append(main.Decls, &fdecl)
 						}
 					}
 				}
@@ -148,22 +147,21 @@ func TrackImports(pkgs map[string](map[string]*ast.File)) (main *ast.File) {
 		}
 	}
 
+	// Now we reverse the order, so that the declarations will be in
+	// C-style order, not requiring forward declarations.
+	newdecls := make([]ast.Decl, len(main.Decls))
+	for i := range main.Decls {
+		newdecls[i] = main.Decls[len(main.Decls)-i-1]
+	}
+	main.Decls = newdecls
+
 	mainfn := new(ast.FuncDecl)
 	mainfn.Name = ast.NewIdent("main")
 	mainfn.Type = &ast.FuncType{Params: &ast.FieldList{}}
 	initstmts = append(initstmts,
-		&ast.ExprStmt{&ast.CallExpr{Fun: ast.NewIdent("main_main")}},
-		&ast.ExprStmt{&ast.CallExpr{
-			// the following means exit(1)...
-			Fun: ast.NewIdent("syscall"),
-			Args: []ast.Expr{
-				&ast.BasicLit{Kind: token.INT, Value: "1"},
-				&ast.BasicLit{Kind: token.INT, Value: "0"},
-			},
-		},
-		})
+		&ast.ExprStmt{&ast.CallExpr{Fun: ast.NewIdent("main_main")}})
 	mainfn.Body = &ast.BlockStmt{List: initstmts}
-	*maindecls = append(*maindecls, mainfn)
+	main.Decls = append(main.Decls, mainfn)
 	return main
 }
 
