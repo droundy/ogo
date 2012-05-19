@@ -18,13 +18,19 @@ func TrackImports(pkgs map[string](map[string]*ast.File)) (main *ast.File) {
 	initstmts := []ast.Stmt{} // this is where we'll stash the init statements...
 
 	todo := make(map[string]struct{})
+	todo["main.init"] = struct{}{}
 	todo["main.main"] = struct{}{}
 	done := make(map[string]struct{})
 
 	for len(todo) > 0 {
 		for pkgfn := range todo {
-			pkg := strings.Split(pkgfn, ".")[0]
+			pkg := strings.Split(pkgfn, ".")[0] // FIXME:  Need to split after last "." only
 			fn := strings.Split(pkgfn, ".")[1]
+			if _, ok := done[pkg+".init"]; !ok && fn != "init" {
+				// We still need to init this package!
+				fmt.Println("queuing", pkg+".init")
+				todo[pkg+".init"] = struct{}{}
+			}
 			// fmt.Println("Working on package", pkg, "function", fn)
 			// We need to look in all this package's files...
 			for _, f := range pkgs[pkg] {
@@ -76,7 +82,7 @@ func TrackImports(pkgs map[string](map[string]*ast.File)) (main *ast.File) {
 								// fmt.Println("Got type declaration of", spec.Name)
 								spec := *spec
 								spec.Name = ast.NewIdent(fn)
-								sc.MangleExpr(spec.Type)
+								spec.Type = sc.MangleExpr(spec.Type)
 								sc.MangleExpr(spec.Name)
 								d := &ast.GenDecl{
 									Tok:   token.TYPE,
@@ -90,7 +96,7 @@ func TrackImports(pkgs map[string](map[string]*ast.File)) (main *ast.File) {
 							spec := spec0.(*ast.ValueSpec)
 							for i, n := range spec.Names {
 								if n.Name == fn {
-									fmt.Println("I got variable", fn)
+									// fmt.Println("I got variable", fn)
 									nnew := *n
 									sc.MangleExpr(&nnew)
 									vs := []ast.Expr(nil)
@@ -132,6 +138,10 @@ func TrackImports(pkgs map[string](map[string]*ast.File)) (main *ast.File) {
 							sc.MangleStatement(fdecl.Body)
 							// fmt.Println("Dumping out", pkg, fn)
 							main.Decls = append(main.Decls, &fdecl)
+							if fn == "init" && fdecl.Recv == nil {
+								initstmts = append(initstmts,
+									&ast.ExprStmt{&ast.CallExpr{Fun: fdecl.Name}})
+							}
 						}
 					}
 				}
@@ -292,8 +302,10 @@ func (sc *PackageScoping) MangleStatement(st ast.Stmt) {
 	case *ast.IncDecStmt:
 		sc.MangleExpr(st.X)
 	case *ast.BlockStmt:
-		for _, x := range st.List {
-			sc.MangleStatement(x)
+		if st != nil && st.List != nil {
+			for _, x := range st.List {
+				sc.MangleStatement(x)
+			}
 		}
 	case *ast.ForStmt:
 		sc.MangleStatement(st.Post)
