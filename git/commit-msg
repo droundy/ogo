@@ -1,0 +1,5 @@
+#!/bin/sh
+
+set -ev
+
+echo Tested on `hostname`. >> "$1"
