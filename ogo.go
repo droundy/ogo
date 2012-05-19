@@ -10,6 +10,7 @@ import (
 	"go/printer"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 )
 
@@ -74,10 +75,7 @@ func importPath(packages map[string](map[string]*ast.File), fset *token.FileSet,
 	return
 }
 
-func buildCommand(dir string) {
-	fmt.Println("*****************************")
-	fmt.Println(" building", dir)
-	fmt.Println("*****************************")
+func parseCommand(dir string) (*ast.File, *token.FileSet) {
 	x, err := build.ImportDir(dir, 0)
 	if err != nil {
 		panic(err)
@@ -102,11 +100,60 @@ func buildCommand(dir string) {
 	if err != nil {
 		fmt.Println("Error importing stuff:", err)
 	}
-	mymain := TrackImports(packages)
-	printer.Fprint(os.Stdout, &fset, mymain)
+	return TrackImports(packages), &fset
+}
+
+func runGoBuildIn(dir string) (err error) {
+	buildit := exec.Command("go", "build")
+	buildit.Dir = dir
+	return buildit.Run()
+}
+
+func buildCommand(dir string) {
+	fmt.Println("*****************************")
+	fmt.Println(" building", dir)
+	fmt.Println("*****************************")
+
+	mymain, fset := parseCommand(dir)
+	catdir := filepath.Join(dir, "concatenated")
+	err := os.MkdirAll(catdir, 0777)
+	if err != nil {
+		panic(err)
+	}
+	goname := filepath.Join(catdir, filepath.Base(dir)+".go")
+	f, err := os.Create(goname)
+	if err != nil {
+		panic(err)
+	}
+	printer.Fprint(f, fset, mymain)
+	f.Close()
+	err = runGoBuildIn(catdir)
+	if err != nil {
+		panic(err)
+	}
+
+	err = runGoBuildIn(dir)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Testing", dir, "...")
+	outc, err := exec.Command(filepath.Join(catdir, filepath.Base(catdir))).CombinedOutput()
+	if err != nil {
+		panic("Error building concatenated file: " + err.Error())
+	}
+	outg, err := exec.Command(filepath.Join(dir, filepath.Base(dir))).CombinedOutput()
+	if err != nil {
+		panic("Error building raw file: " + err.Error())
+	}
+	if string(outc) != string(outg) {
+		panic("outputs differ")
+	}
+	fmt.Println("Tests pass!")
 }
 
 func main() {
-	buildCommand(".")
+	//buildCommand(".")
 	buildCommand("tests/hello")
+	buildCommand("tests/hello-package")
 }

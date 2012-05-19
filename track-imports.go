@@ -8,6 +8,13 @@ import (
 	"strings"
 )
 
+func ManglePackageAndName(p, n string) string {
+	out := strings.Replace(p+"_"+n, "/", "_", -1)
+	out = strings.Replace(out, ".", "_", -1)
+	out = strings.Replace(out, "-", "_", -1)
+	return out
+}
+
 // Track imports simplifies all imports into a single large package
 // with mangled names.  In the process, it drops functions that are
 // never referred to.
@@ -28,7 +35,6 @@ func TrackImports(pkgs map[string](map[string]*ast.File)) (main *ast.File) {
 			fn := strings.Split(pkgfn, ".")[1]
 			if _, ok := done[pkg+".init"]; !ok && fn != "init" {
 				// We still need to init this package!
-				fmt.Println("queuing", pkg+".init")
 				todo[pkg+".init"] = struct{}{}
 			}
 			// fmt.Println("Working on package", pkg, "function", fn)
@@ -52,6 +58,10 @@ func TrackImports(pkgs map[string](map[string]*ast.File)) (main *ast.File) {
 							name := path
 							if ispec.Name != nil {
 								name = ispec.Name.Name
+							} else {
+								for _, f := range pkgs[path] {
+									name = f.Name.Name
+								}
 							}
 							sc.Imports[name] = path
 						}
@@ -205,7 +215,9 @@ func (sc *PackageScoping) MangleExpr(e ast.Expr) ast.Expr {
 		if pkg, ok := sc.Globals[e.Name]; ok {
 			// It's a global identifier, so we need to mangle it...
 			sc.Do(pkg + "." + e.Name)
-			e.Name = pkg + "_" + e.Name
+			oldname := e.Name
+			e.Name = ManglePackageAndName(pkg, e.Name)
+			fmt.Println("Name is", e.Name, "from", pkg, oldname)
 		} else {
 			// Nothing to do here, it is a local identifier or builtin.
 		}
@@ -239,9 +251,11 @@ func (sc *PackageScoping) MangleExpr(e ast.Expr) ast.Expr {
 		if b, ok := e.X.(*ast.Ident); ok {
 			if theimp, ok := sc.Imports[b.Name]; ok {
 				sc.Do(theimp + "." + e.Sel.Name)
-				e.Sel.Name = theimp + "_" + e.Sel.Name
+				e.Sel.Name = ManglePackageAndName(theimp, e.Sel.Name)
 				return e.Sel
 			} else {
+				fmt.Println("not a package: ", b.Name)
+				fmt.Println("Imports are", sc.Imports)
 				sc.MangleExpr(e.X)
 			}
 		} else {
