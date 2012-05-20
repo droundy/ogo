@@ -12,6 +12,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"github.com/droundy/ogo/transform"
+	"github.com/droundy/ogo/cprinter"
 )
 
 func parseFile(fset *token.FileSet, srcdir, f string) (parsedf *ast.File, err error) {
@@ -100,7 +102,7 @@ func parseCommand(dir string) (*ast.File, *token.FileSet) {
 	if err != nil {
 		fmt.Println("Error importing stuff:", err)
 	}
-	return TrackImports(packages), &fset
+	return transform.TrackImports(packages), &fset
 }
 
 func runGoBuildIn(dir string) (err error) {
@@ -131,6 +133,20 @@ func buildCommand(dir string) {
 	if err != nil {
 		panic(err)
 	}
+
+	cdir := filepath.Join(dir, "c")
+	err = os.MkdirAll(cdir, 0777)
+	if err != nil {
+		panic(err)
+	}
+	cname := filepath.Join(cdir, filepath.Base(dir)+".c")
+	f, err = os.Create(cname)
+	fmt.Println("created", cname)
+	if err != nil {
+		panic(err)
+	}
+	cprinter.Fprint(f, fset, mymain)
+	f.Close()
 
 	err = runGoBuildIn(dir)
 	if err != nil {
