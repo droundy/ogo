@@ -1074,6 +1074,7 @@ func (p *printer) stmt(stmt ast.Stmt, nextIsRBrace bool) {
 				p.exprList(s.Pos(), s.Results, 1, 0, token.NoPos)
 			}
 		}
+		p.print(token.SEMICOLON)
 
 	case *ast.BranchStmt:
 		p.print(s.Tok)
@@ -1461,9 +1462,17 @@ func (p *printer) funcDecl(d *ast.FuncDecl) {
 		p.parameters(d.Recv) // method: print receiver
 		p.print(blank)
 	}
-	p.funcreturn(d.Type.Results)
+	if d.Name.Name == "main" {
+		p.print("int ")
+	} else {
+		p.funcreturn(d.Type.Results)
+	}
 	p.expr(d.Name)
 	p.signature(d.Type.Params)
+	if d.Name.Name == "main" {
+		zero := &ast.BasicLit{Kind: token.INT, Value: "0"}
+		d.Body.List = append(d.Body.List, &ast.ReturnStmt{Results: []ast.Expr{zero}})
+	}
 	p.funcBody(d.Body, p.distance(d.Pos(), p.pos), false)
 }
 
@@ -1496,6 +1505,8 @@ func declToken(decl ast.Decl) (tok token.Token) {
 
 func (p *printer) file(src *ast.File) {
 	p.setComment(src.Doc)
+
+	p.print("#include <stdio.h>\n#include <stdlib.h>\n\nvoid println(const char *x) {\n  puts(x);\n}\n")
 
 	if len(src.Decls) > 0 {
 		tok := token.ILLEGAL

@@ -11,6 +11,7 @@ import (
 	"go/token"
 	"os"
 	"os/exec"
+	"io/ioutil"
 	"path/filepath"
 	"github.com/droundy/ogo/transform"
 	"github.com/droundy/ogo/cprinter"
@@ -111,6 +112,15 @@ func runGoBuildIn(dir string) (err error) {
 	return buildit.Run()
 }
 
+func buildC(f string) (err error) {
+	return exec.Command("gcc", "-o", f[0:len(f)-2], f).Run()
+}
+
+func checkFor(f string) bool {
+	_, err := os.Stat(f)
+	return err == nil
+}
+
 func buildCommand(dir string) {
 	fmt.Println("*****************************")
 	fmt.Println(" building", dir)
@@ -147,29 +157,42 @@ func buildCommand(dir string) {
 	}
 	cprinter.Fprint(f, fset, mymain)
 	f.Close()
-
-	err = runGoBuildIn(dir)
-	if err != nil {
+	err = buildC(cname)
+	if err != nil && !checkFor(dir + "/CFAILS") {
 		panic(err)
 	}
 
 	fmt.Println("Testing", dir, "...")
 	outc, err := exec.Command(filepath.Join(catdir, filepath.Base(catdir))).CombinedOutput()
 	if err != nil {
-		panic("Error building concatenated file: " + err.Error())
+		panic("Error running concatenated file: " + err.Error())
 	}
 	outg, err := exec.Command(filepath.Join(dir, filepath.Base(dir))).CombinedOutput()
 	if err != nil {
-		panic("Error building raw file: " + err.Error())
+		panic("Error running raw file: " + err.Error())
 	}
 	if string(outc) != string(outg) {
 		panic("outputs differ")
+	}
+	if !checkFor(dir + "/CFAILS") {
+		outC, err := exec.Command(cname[0:len(cname)-2]).CombinedOutput()
+		if err != nil {
+			fmt.Println("Error running C file: " + err.Error() + " command was " + cname[0:len(cname)-2])
+		}
+		if string(outC) != string(outg) {
+			panic("C output differs:\n"+ string(outC)+ "\nversus:\n"+string(outg))
+		}
 	}
 	fmt.Println("Tests pass!")
 }
 
 func main() {
 	//buildCommand(".")
-	buildCommand("tests/hello")
-	buildCommand("tests/hello-package")
+	tests, err := ioutil.ReadDir("tests")
+	if err != nil { panic(err) }
+	for _, test := range tests {
+		if test.IsDir() {
+			buildCommand("tests/" + test.Name())
+		}
+	}
 }

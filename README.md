@@ -62,6 +62,10 @@ types.
 1. (g2g) Eliminate `&` operator on local variables directly, changing
 said local variables into pointer allocated with new.
 
+1. Implement `string` type
+
+1. (g2g) Change multiple return to return a single struct type
+
 1. Use Boehm garbage collector
 
 1. Implement `type` as a builtin data type, and implement new in the
