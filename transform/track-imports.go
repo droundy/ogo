@@ -15,6 +15,14 @@ func ManglePackageAndName(p, n string) string {
 	return out
 }
 
+func splitLast(in, sep string) [2]string {
+	i := strings.LastIndex(in, sep)
+	if i < 0 {
+		panic("bad string in splitLast")
+	}
+	return [2]string{in[:i], in[i+len(sep):]}
+}
+
 // Track imports simplifies all imports into a single large package
 // with mangled names.  In the process, it drops functions that are
 // never referred to.
@@ -31,8 +39,9 @@ func TrackImports(pkgs map[string](map[string]*ast.File)) (main *ast.File) {
 
 	for len(todo) > 0 {
 		for pkgfn := range todo {
-			pkg := strings.Split(pkgfn, ".")[0] // FIXME:  Need to split after last "." only
-			fn := strings.Split(pkgfn, ".")[1]
+			pkg := splitLast(pkgfn, ".")[0] // FIXME:  Need to split after last "." only
+			fn := splitLast(pkgfn, ".")[1]
+			fmt.Println("Working on", fn, "in", pkg)
 			if _, ok := done[pkg+".init"]; !ok && fn != "init" {
 				// We still need to init this package!
 				todo[pkg+".init"] = struct{}{}

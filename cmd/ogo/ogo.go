@@ -4,17 +4,18 @@ package main
 
 import (
 	"fmt"
+	"github.com/droundy/ogo/cprinter"
+	"github.com/droundy/ogo/transform"
+	"github.com/droundy/ogo/types"
 	"go/ast"
 	"go/build"
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"io/ioutil"
 	"os"
 	"os/exec"
-	"io/ioutil"
 	"path/filepath"
-	"github.com/droundy/ogo/transform"
-	"github.com/droundy/ogo/cprinter"
 )
 
 func parseFile(fset *token.FileSet, srcdir, f string) (parsedf *ast.File, err error) {
@@ -126,9 +127,16 @@ func buildCommand(dir string) {
 	fmt.Println(" building", dir)
 	fmt.Println("*****************************")
 
+	err := runGoBuildIn(dir)
+	if err != nil {
+		panic(fmt.Sprintln("Trouble building original file: ", dir, err))
+	}
+
+	// First parse the input file and concatenate all its necessary
+	// imports.
 	mymain, fset := parseCommand(dir)
 	catdir := filepath.Join(dir, "concatenated")
-	err := os.MkdirAll(catdir, 0777)
+	err = os.MkdirAll(catdir, 0777)
 	if err != nil {
 		panic(err)
 	}
@@ -141,9 +149,13 @@ func buildCommand(dir string) {
 	f.Close()
 	err = runGoBuildIn(catdir)
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintln("Trouble building cat file: ", catdir, err))
 	}
 
+	// Now we typecheck the thing
+	types.TypeCheck(mymain)
+
+	// Finally, generate the C file
 	cdir := filepath.Join(dir, "c")
 	err = os.MkdirAll(cdir, 0777)
 	if err != nil {
@@ -158,7 +170,7 @@ func buildCommand(dir string) {
 	cprinter.Fprint(f, fset, mymain)
 	f.Close()
 	err = buildC(cname)
-	if err != nil && !checkFor(dir + "/CFAILS") {
+	if err != nil && !checkFor(dir+"/CFAILS") {
 		panic(err)
 	}
 
@@ -175,12 +187,12 @@ func buildCommand(dir string) {
 		panic("outputs differ")
 	}
 	if !checkFor(dir + "/CFAILS") {
-		outC, err := exec.Command(cname[0:len(cname)-2]).CombinedOutput()
+		outC, err := exec.Command(cname[0 : len(cname)-2]).CombinedOutput()
 		if err != nil {
 			fmt.Println("Error running C file: " + err.Error() + " command was " + cname[0:len(cname)-2])
 		}
 		if string(outC) != string(outg) {
-			panic("C output differs:\n"+ string(outC)+ "\nversus:\n"+string(outg))
+			panic("C output differs:\n" + string(outC) + "\nversus:\n" + string(outg))
 		}
 	}
 	fmt.Println("Tests pass!")
@@ -189,7 +201,9 @@ func buildCommand(dir string) {
 func main() {
 	//buildCommand(".")
 	tests, err := ioutil.ReadDir("tests")
-	if err != nil { panic(err) }
+	if err != nil {
+		panic(err)
+	}
 	for _, test := range tests {
 		if test.IsDir() {
 			buildCommand("tests/" + test.Name())

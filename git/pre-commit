@@ -11,8 +11,10 @@ TEMPDIR=`mktemp -d -t testing-XXXXXXXXX`
 git checkout-index --prefix=$TEMPDIR/ -af
 cd $TEMPDIR
 
+cd cmd/ogo
 go build
-./`basename $TEMPDIR`
+cd ../..
+cmd/ogo/ogo
 
 # Now let's gofmt everything...
 

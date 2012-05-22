@@ -1,6 +1,6 @@
 package main
 
-import "cmd/ogo/tests/hello-package/world"
+import "github.com/droundy/ogo/tests/string-cat/world"
 
 func main() {
 	println("Hello, " + world.World)
