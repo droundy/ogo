@@ -931,8 +931,10 @@ func (p *printer) controlClause(isForStmt bool, init ast.Stmt, expr ast.Expr, po
 	if init == nil && post == nil {
 		// no semicolons required
 		if expr != nil {
+			p.print(token.LPAREN)
 			p.expr(stripParens(expr))
 			needsBlank = true
+			p.print(token.RPAREN)
 		}
 	} else {
 		// all semicolons required
@@ -1088,7 +1090,10 @@ func (p *printer) stmt(stmt ast.Stmt, nextIsRBrace bool) {
 
 	case *ast.IfStmt:
 		p.print(token.IF)
-		p.controlClause(false, s.Init, s.Cond, nil)
+		if s.Init != nil {
+			panic("cprinter wants if statements with no Init clause!")
+		}
+		p.controlClause(false, nil, s.Cond, nil)
 		p.block(s.Body, 1)
 		if s.Else != nil {
 			p.print(blank, token.ELSE, blank)
@@ -1267,46 +1272,26 @@ func (p *printer) valueSpec(s *ast.ValueSpec, keepType bool) {
 	}
 }
 
-// The parameter n is the number of specs in the group. If doIndent is set,
-// multi-line identifier lists in the spec are indented when the first
-// linebreak is encountered.
-//
-func (p *printer) spec(spec ast.Spec, n int, doIndent bool) {
+func (p *printer) spec(spec ast.Spec) {
 	switch s := spec.(type) {
 	case *ast.ImportSpec:
-		p.setComment(s.Doc)
-		if s.Name != nil {
-			p.expr(s.Name)
-			p.print(blank)
-		}
-		p.expr(s.Path)
-		p.setComment(s.Comment)
-		p.print(s.EndPos)
-
+		panic("C doesn't have import statements (include?)")
 	case *ast.ValueSpec:
-		if n != 1 {
-			p.internalError("expected n = 1; got", n)
-		}
 		p.setComment(s.Doc)
-		p.identList(s.Names, doIndent) // always present
-		if s.Type != nil {
-			p.print(blank)
-			p.expr(s.Type)
-		}
+		p.expr(s.Type)
+		p.print(blank)
+		p.identList(s.Names, true) // always present
 		if s.Values != nil {
 			p.print(blank, token.ASSIGN, blank)
 			p.exprList(token.NoPos, s.Values, 1, 0, token.NoPos)
 		}
+		p.print(token.SEMICOLON)
 		p.setComment(s.Comment)
 
 	case *ast.TypeSpec:
 		p.setComment(s.Doc)
 		p.expr(s.Name)
-		if n == 1 {
-			p.print(blank)
-		} else {
-			p.print(vtab)
-		}
+		p.print(blank)
 		p.expr(s.Type)
 		p.setComment(s.Comment)
 
@@ -1317,42 +1302,11 @@ func (p *printer) spec(spec ast.Spec, n int, doIndent bool) {
 
 func (p *printer) genDecl(d *ast.GenDecl) {
 	p.setComment(d.Doc)
-	p.print(d.Pos(), d.Tok, blank)
-
-	if d.Lparen.IsValid() {
-		// group of parenthesized declarations
-		p.print(d.Lparen, token.LPAREN)
-		if n := len(d.Specs); n > 0 {
-			p.print(indent, formfeed)
-			if n > 1 && (d.Tok == token.CONST || d.Tok == token.VAR) {
-				// two or more grouped const/var declarations:
-				// determine if the type column must be kept
-				keepType := keepTypeColumn(d.Specs)
-				newSection := false
-				for i, s := range d.Specs {
-					if i > 0 {
-						p.linebreak(p.lineFor(s.Pos()), 1, ignore, newSection)
-					}
-					p.valueSpec(s.(*ast.ValueSpec), keepType[i])
-					newSection = p.isMultiLine(s)
-				}
-			} else {
-				newSection := false
-				for i, s := range d.Specs {
-					if i > 0 {
-						p.linebreak(p.lineFor(s.Pos()), 1, ignore, newSection)
-					}
-					p.spec(s, n, false)
-					newSection = p.isMultiLine(s)
-				}
-			}
-			p.print(unindent, formfeed)
+	for _, s := range d.Specs {
+		if d.Tok == token.CONST {
+			p.print(d.Tok)
 		}
-		p.print(d.Rparen, token.RPAREN)
-
-	} else {
-		// single declaration
-		p.spec(d.Specs[0], 1, true)
+		p.spec(s)
 	}
 }
 

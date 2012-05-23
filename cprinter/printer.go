@@ -1021,7 +1021,7 @@ func (p *printer) printNode(node interface{}) error {
 	case ast.Decl:
 		p.decl(n)
 	case ast.Spec:
-		p.spec(n, 1, false)
+		p.spec(n)
 	case *ast.File:
 		p.file(n)
 	default:

@@ -20,6 +20,7 @@ func AlignSize(sz, al int) int {
 
 type Type interface {
 	Size() int
+	Expr() ast.Expr
 }
 
 type TypeType struct {
@@ -35,12 +36,21 @@ type Int struct {
 func (t Int) Size() int {
 	return IntSize
 }
+func (t Int) Expr() ast.Expr {
+	return ast.NewIdent("int")
+}
 
 type String struct {
 }
 
 func (t String) Size() int {
 	return AlignSize(IntSize+PointerSize, PointerSize)
+}
+func (t String) Expr() ast.Expr {
+	return ast.NewIdent("string")
+}
+func (t String) String() string {
+	return "string"
 }
 
 type Function struct {
@@ -51,6 +61,30 @@ func (t Function) Size() int {
 	// I plan to pass a bunch of arguments along with a pointer when
 	// creating a closure.
 	return AlignSize(IntSize+PointerSize+PointerSize, PointerSize)
+}
+func (t Function) String() string {
+	return fmt.Sprint("func(", t.Parameters, ") ", t.Results)
+}
+func (t Function) Expr() ast.Expr {
+	p := make([]*ast.Field, len(t.Parameters))
+	r := make([]*ast.Field, len(t.Results))
+	n := 0
+	for i := range p {
+		p[i] = &ast.Field{
+			Names: []*ast.Ident{ast.NewIdent(fmt.Sprint("param", n))},
+			Type:  t.Parameters[i].Expr()}
+		n++
+	}
+	n = 0
+	for i := range r {
+		r[i] = &ast.Field{
+			Names: []*ast.Ident{ast.NewIdent(fmt.Sprint("result", n))},
+			Type:  t.Results[i].Expr()}
+		n++
+	}
+	return &ast.FuncType{
+		Params:  &ast.FieldList{List: p},
+		Results: &ast.FieldList{List: r}}
 }
 
 type Method struct {
@@ -106,6 +140,7 @@ func typeDecl(t map[string]Type, d ast.Decl, ds []ast.Decl) {
 					}
 				}
 				t[d.Name.Name] = Function{args, results}
+				fmt.Println("Type of", d.Name.Name, "is", t[d.Name.Name])
 			} else {
 				panic("I don't yet handle methods!")
 			}
@@ -119,7 +154,19 @@ func typeDecl(t map[string]Type, d ast.Decl, ds []ast.Decl) {
 		case token.TYPE:
 			// TODO
 		case token.VAR:
-			// TODO
+			for _, s := range d.Specs {
+				s := s.(*ast.ValueSpec)
+				var thist Type
+				if s.Type != nil {
+					thist = evalTypeExpr(s.Type, t, ds)
+				} else {
+					thist = findTypeOf(s.Values[0], t, ds)
+					s.Type = thist.Expr()
+				}
+				for _, n := range s.Names {
+					t[n.Name] = thist
+				}
+			}
 		default:
 			panic("Invalid token in GenDecl.Tok!")
 		}
@@ -134,4 +181,21 @@ func evalTypeExpr(t ast.Expr, ts map[string]Type, ds []ast.Decl) Type {
 		panic(fmt.Sprintf("Unknown type in evalTypeExpr: %T", t))
 	}
 	return Int{}
+}
+
+func findTypeOf(t ast.Expr, ts map[string]Type, ds []ast.Decl) Type {
+	switch t := t.(type) {
+	case *ast.BasicLit:
+		switch t.Kind {
+		case token.STRING:
+			return String{}
+		case token.INT:
+			return Int{}
+		default:
+			panic(fmt.Sprint("BasicLit not understood yet: ", t.Kind, " which is ", t.Value))
+		}
+	default:
+		panic(fmt.Sprintf("findTypeOf not implemented for %T", t))
+	}
+	panic("findTypeOf not implemented")
 }
